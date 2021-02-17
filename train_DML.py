@@ -17,7 +17,7 @@ from tqdm import tqdm
 import utils
 import models
 import models.data_loader as data_loader
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 # Fix the random seed for reproducible experiments
 # random.seed(97)

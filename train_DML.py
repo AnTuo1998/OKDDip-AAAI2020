@@ -19,12 +19,26 @@ import models
 import models.data_loader as data_loader
 from torch.utils.tensorboard import SummaryWriter
 
-# Fix the random seed for reproducible experiments
+# # Fix the random seed for reproducible experiments
 # random.seed(97)
 # torch.manual_seed(97)
-# if torch.cuda.is_available(): torch.cuda.manual_seed(97)
-torch.backends.cudnn.benchmark = True
+# if torch.cuda.is_available():
+#     torch.cuda.manual_seed(97)
+# torch.backends.cudnn.benchmark = True
 # torch.backends.cudnn.deterministic = True
+
+
+def set_seed(seed):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
+    g = torch.Generator()
+    g.manual_seed(seed)
+
 
 # Set parameters
 parser = argparse.ArgumentParser()
@@ -68,11 +82,20 @@ parser.add_argument('--temperature', default=3.0, type=float,
                     help='Input the temperature: default(3.0)')
 parser.add_argument('--type', action='store_true',
                     help='Decide whether or not to use avg-loss: default(False)')
+parser.add_argument('--seed', type=int, default=0, help='seed')
 
 args = parser.parse_args()
+
+if args.model in ["mobilenet_v2", "densenet121"]:
+    args.batch_size = int(args.batch_size/4)
+    args.grad_acc_freq = 4
+else:
+    args.grad_acc_freq = 1
+
+
 state = {k: v for k, v in args._get_kwargs()}
 print(args)
-
+set_seed(args.seed)
 # Use CUDA
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 # Device configuration
@@ -80,6 +103,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def train(train_loader, model, optimizer, criterion, criterion_T, accuracy, args):
+    optimizer.zero_grad()
 
     # set model to training mode
     model.train()
@@ -97,7 +121,7 @@ def train(train_loader, model, optimizer, criterion, criterion_T, accuracy, args
 
     # Use tqdm for progress bar
     with tqdm(total=len(train_loader)) as t:
-        for i, (train_batch, labels_batch) in enumerate(train_loader):
+        for idx, (train_batch, labels_batch) in enumerate(train_loader):
             train_batch = train_batch.cuda(non_blocking=True)
             labels_batch = labels_batch.cuda(non_blocking=True)
 
@@ -142,12 +166,13 @@ def train(train_loader, model, optimizer, criterion, criterion_T, accuracy, args
             accTop1_avg[args.num_branches].update(e_metrics[0].item())
             accTop5_avg[args.num_branches].update(e_metrics[1].item())
 
-            # clear previous gradients, compute gradients of all variables wrt loss
-            optimizer.zero_grad()
             loss.backward()
 
+            # clear previous gradients, compute gradients of all variables wrt loss
             # performs updates using calculated gradients
-            optimizer.step()
+            if (idx+1) % args.grad_acc_freq == 0:
+                optimizer.step()
+                optimizer.zero_grad()
 
             t.update()
 
@@ -319,8 +344,6 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
 
     for epoch in range(start_epoch, args.num_epochs):
 
-        scheduler.step()
-
         # Run one epoch
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
 
@@ -378,6 +401,9 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
 
             # Save model and optimizer
             shutil.copyfile(last_path, os.path.join(model_dir, 'best.pth'))
+
+        scheduler.step()
+
     writer.close()
 
 

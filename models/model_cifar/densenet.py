@@ -15,7 +15,9 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from collections import OrderedDict
 
-__all__ = ['DenseNet', 'densenetd40k12', 'densenetd100k12', 'densenetd100k40', 'densenetd190k12']
+__all__ = ['DenseNet', 'densenetd40k12', 'densenetd100k12', "densenet121",
+           'densenetd100k40', 'densenetd190k12']
+
 
 def _bn_function_factory(norm, relu, conv):
     def bn_function(*inputs):
@@ -32,11 +34,11 @@ class _DenseLayer(nn.Module):
         self.add_module('norm1', nn.BatchNorm2d(num_input_features)),
         self.add_module('relu1', nn.ReLU(inplace=True)),
         self.add_module('conv1', nn.Conv2d(num_input_features, bn_size * growth_rate,
-                        kernel_size=1, stride=1, bias=False)),
+                                           kernel_size=1, stride=1, bias=False)),
         self.add_module('norm2', nn.BatchNorm2d(bn_size * growth_rate)),
         self.add_module('relu2', nn.ReLU(inplace=True)),
         self.add_module('conv2', nn.Conv2d(bn_size * growth_rate, growth_rate,
-                        kernel_size=3, stride=1, padding=1, bias=False)),
+                                           kernel_size=3, stride=1, padding=1, bias=False)),
         self.drop_rate = drop_rate
         self.efficient = efficient
 
@@ -48,7 +50,8 @@ class _DenseLayer(nn.Module):
             bottleneck_output = bn_function(*prev_features)
         new_features = self.conv2(self.relu2(self.norm2(bottleneck_output)))
         if self.drop_rate > 0:
-            new_features = F.dropout(new_features, p=self.drop_rate, training=self.training)
+            new_features = F.dropout(
+                new_features, p=self.drop_rate, training=self.training)
         return new_features
 
 
@@ -97,9 +100,10 @@ class DenseNet(nn.Module):
         small_inputs (bool) - set to True if images are 32x32. Otherwise assumes images are larger.
         efficient (bool) - set to True to use checkpointing. Much more memory efficient, but slower.
     """
+
     def __init__(self, growth_rate=12, block_config=[16, 16, 16], compression=0.5,
                  num_init_features=24, bn_size=4, drop_rate=0,
-                 num_classes=10, small_inputs=True, efficient=False, KD = False):
+                 num_classes=10, small_inputs=True, efficient=False, KD=False):
 
         super(DenseNet, self).__init__()
         assert 0 < compression <= 1, 'compression of densenet should be between 0 and 1'
@@ -108,13 +112,18 @@ class DenseNet(nn.Module):
         # First convolution
         if small_inputs:
             self.features = nn.Sequential(OrderedDict([
-                ('conv0', nn.Conv2d(3, num_init_features, kernel_size=3, stride=1, padding=1, bias=False)),
+                ('conv0', nn.Conv2d(3, num_init_features,
+                                    kernel_size=3, stride=1, padding=1, bias=False)),
+                ('norm0', nn.BatchNorm2d(num_init_features)),
+                ('relu0', nn.ReLU(inplace=True)),
             ]))
         else:
             self.features = nn.Sequential(OrderedDict([
-                ('conv0', nn.Conv2d(3, num_init_features, kernel_size=7, stride=2, padding=3, bias=False)),
+                ('conv0', nn.Conv2d(3, num_init_features,
+                                    kernel_size=7, stride=2, padding=3, bias=False)),
             ]))
-            self.features.add_module('norm0', nn.BatchNorm2d(num_init_features))
+            self.features.add_module(
+                'norm0', nn.BatchNorm2d(num_init_features))
             self.features.add_module('relu0', nn.ReLU(inplace=True))
             self.features.add_module('pool0', nn.MaxPool2d(kernel_size=3, stride=2, padding=1,
                                                            ceil_mode=False))
@@ -156,65 +165,84 @@ class DenseNet(nn.Module):
 
     def forward(self, x):
         features = self.features(x)
-        # D40K12    B x 132 x 8 x 8 
+        # D40K12    B x 132 x 8 x 8
         # D100K12   B x 342 x 8 x 8
         # D100K40   B x 1126 x 8 x 8
-        x = F.relu(features, inplace=True)    
-        x_f = F.avg_pool2d(x, kernel_size=self.avgpool_size).view(features.size(0), -1) # B x 132
+        x = F.relu(features, inplace=True)
+        x_f = F.adaptive_avg_pool2d(x, (1, 1))
+        x_f = torch.flatten(x_f, 1)
         x = self.classifier(x_f)
-        if self.KD == True:
-            return x_f, x
-        else:
-            return x
+        return x
+        # if self.KD == True:
+        #     return x_f, x
+        # else:
+        # return x
+
+
+def densenet121(pretrained: bool = False, progress: bool = True, **kwargs) -> DenseNet:
+    r"""Densenet-121 model from
+    `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`_.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+        memory_efficient (bool) - If True, uses checkpointing. Much more memory efficient,
+          but slower. Default: *False*. See `"paper" <https://arxiv.org/pdf/1707.06990.pdf>`_.
+    """
+    return DenseNet(growth_rate=32, block_config=[6, 12, 24, 16],
+                    num_init_features=64, **kwargs)
+
 
 def densenetd40k12(pretrained=False, path=None, **kwargs):
     """
     Constructs a densenetD40K12 model.
-    
+
     Args:
         pretrained (bool): If True, returns a model pre-trained.
     """
-    
-    model = DenseNet(growth_rate = 12, block_config = [6,6,6], **kwargs)
+
+    model = DenseNet(growth_rate=12, block_config=[6, 6, 6], **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model
+
 
 def densenetd100k12(pretrained=False, path=None, **kwargs):
     """
     Constructs a densenetD100K12 model.
-    
+
     Args:
         pretrained (bool): If True, returns a model pre-trained.
     """
-    
-    model = DenseNet(growth_rate = 12, block_config = [16,16,16], **kwargs)
+
+    model = DenseNet(growth_rate=12, block_config=[16, 16, 16], **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model
 
+
 def densenetd190k12(pretrained=False, path=None, **kwargs):
     """
     Constructs a densenetD190K12 model.
-    
+
     Args:
         pretrained (bool): If True, returns a model pre-trained.
     """
-    
-    model = DenseNet(growth_rate = 12, block_config = [31,31,31], **kwargs)
+
+    model = DenseNet(growth_rate=12, block_config=[31, 31, 31], **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model
-    
+
+
 def densenetd100k40(pretrained=False, path=None, **kwargs):
     """
     Constructs a densenetD100K40 model.
-    
+
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    
-    model = DenseNet(growth_rate = 40, block_config = [16,16,16], **kwargs)
+
+    model = DenseNet(growth_rate=40, block_config=[16, 16, 16], **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model

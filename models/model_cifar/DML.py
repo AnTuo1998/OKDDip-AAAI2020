@@ -4,6 +4,7 @@ from .resnet import *
 from .densenet import *
 from .vgg import *
 from .mobilenetv2 import *
+from .shuffle import *
 
 __all__ = ['MutualNet']
 
@@ -25,6 +26,14 @@ class MutualNet(nn.Module):
             elif model == "densenetd40k12":
                 setattr(self, 'stu'+str(i),
                         densenetd40k12(num_classes=num_classes))
+            elif model == "densenet121":
+                setattr(self, 'stu'+str(i),
+                        densenet121(num_classes=num_classes))
+            elif model == "shufflenet_v2_x0_5":
+                setattr(self, 'stu'+str(i),
+                        shufflenet_v2_x0_5(num_classes=num_classes))
+            else:
+                raise NotImplementedError(model)
 
     def forward(self, x):
         out = self.stu0(x)

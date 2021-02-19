@@ -259,7 +259,7 @@ def evaluate(test_loader, model, criterion, criterion_T, accuracy, args, consist
             output_batch = F.softmax(output_batch, dim=1)
             for kk in range(len_kk):
                 ret = output_batch[kk, :, :]
-#                 ret = ret.squeeze(0)
+                # ret = ret.squeeze(0)
                 ret = ret.t()                  # branches x classes
                 sim = 0
                 for j in range(args.num_branches-1):
@@ -337,8 +337,6 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
 
     for epoch in range(start_epoch, args.num_epochs):
 
-        scheduler.step()
-
         # Run one epoch
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
 
@@ -400,6 +398,8 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
 
             # Save model and optimizer
             shutil.copyfile(last_path, os.path.join(model_dir, 'best.pth'))
+
+        scheduler.step()
     writer.close()
 
 

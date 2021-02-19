@@ -17,14 +17,17 @@ import torch.nn.functional as F
 
 __all__ = ['ResNet', 'resnet32', 'resnet110', 'wide_resnet20_8']
 
+
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=dilation, groups=groups, bias=False, dilation=dilation)
 
+
 def conv1x1(in_planes, out_planes, stride=1):
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -35,9 +38,11 @@ class BasicBlock(nn.Module):
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
+            raise ValueError(
+                'BasicBlock only supports groups=1 and base_width=64')
         if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
+            raise NotImplementedError(
+                "Dilation > 1 not supported in BasicBlock")
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
@@ -107,7 +112,8 @@ class Bottleneck(nn.Module):
         out = self.relu(out)
 
         return out
-        
+
+
 class ILR(torch.autograd.Function):
 
     @staticmethod
@@ -119,17 +125,18 @@ class ILR(torch.autograd.Function):
     def backward(ctx, grad_output):
         num_branches = ctx.num_branches
         return grad_output/num_branches, None
-        
+
+
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=10, num_branches = 3, bpscale = False, avg = False, ind = False, zero_init_residual=False, 
-        groups=1, width_per_group=64, replace_stride_with_dilation=None, norm_layer=None):
-        
+    def __init__(self, block, layers, num_classes=10, num_branches=3, bpscale=False, avg=False, ind=False, zero_init_residual=False,
+                 groups=1, width_per_group=64, replace_stride_with_dilation=None, norm_layer=None):
+
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
-        
+
         self.ind = ind
         self.avg = avg
         self.bpscale = bpscale
@@ -150,23 +157,33 @@ class ResNet(nn.Module):
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(block, 16, layers[0])
-        self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
-        fix_inplanes=self.inplanes    # 32
-        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        # self.layer1 = self._make_layer(block, 16, layers[0])
+        # self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
+                                       dilate=replace_stride_with_dilation[0])
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
+                                       dilate=replace_stride_with_dilation[1])
+        fix_inplanes = self.inplanes    # 32
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         for i in range(num_branches):
-            setattr(self, 'layer3_' + str(i), self._make_layer(block, 64, layers[2], stride=2))
-            self.inplanes = fix_inplanes  ##reuse self.inplanes
-            setattr(self, 'classifier3_' +str(i), nn.Linear(64 * block.expansion, num_classes))
-        
+            setattr(self, 'layer4_' + str(i),
+                    self._make_layer(block, 512, layers[3], stride=2,
+                                     dilate=replace_stride_with_dilation[2]))
+            self.inplanes = fix_inplanes  # reuse self.inplanes
+            setattr(self, 'classifier4_' + str(i),
+                    nn.Linear(512 * block.expansion, num_classes))
+
         if self.avg == False:
-            self.avgpool_c = nn.AvgPool2d(16)
+            # self.avgpool_c = nn.AvgPool2d(16)
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
             self.control_v1 = nn.Linear(fix_inplanes, self.num_branches)
             self.bn_v1 = nn.BatchNorm1d(self.num_branches)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(
+                    m.weight, mode='fan_out', nonlinearity='relu')
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
@@ -181,7 +198,7 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn2.weight, 0)
         if self.bpscale:
             self.layer_ILR = ILR.apply
-                    
+
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
         downsample = None
@@ -205,7 +222,7 @@ class ResNet(nn.Module):
                                 norm_layer=norm_layer))
 
         return nn.Sequential(*layers)
-        
+
     def forward(self, x):
 
         x = self.conv1(x)
@@ -214,21 +231,23 @@ class ResNet(nn.Module):
 
         x = self.layer1(x)          # B x 16 x 32 x 32
         x = self.layer2(x)          # B x 32 x 16 x 16
+        x = self.layer3(x)
         if self.bpscale:
-            x = self.layer_ILR(x, self.num_branches) # Backprop rescaling
+            x = self.layer_ILR(x, self.num_branches)  # Backprop rescaling
 
-        x_3 = getattr(self,'layer3_0')(x)   # B x 64 x 8 x 8
+        x_3 = getattr(self, 'layer4_0')(x)   # B x 64 x 8 x 8
         x_3 = self.avgpool(x_3)             # B x 64 x 1 x 1
         x_3 = x_3.view(x_3.size(0), -1)     # B x 64
-        x_3_1 = getattr(self, 'classifier3_0')(x_3)     # B x num_classes
-        pro = x_3_1.unsqueeze(-1)        
+        x_3_1 = getattr(self, 'classifier4_0')(x_3)     # B x num_classes
+        pro = x_3_1.unsqueeze(-1)
         for i in range(1, self.num_branches):
-            temp = getattr(self, 'layer3_'+str(i))(x)
+            temp = getattr(self, 'layer4_'+str(i))(x)
             temp = self.avgpool(temp)       # B x 64 x 1 x 1
-            temp = temp.view(temp.size(0), -1)   
-            temp_1 = getattr(self, 'classifier3_' + str(i))(temp)
+            temp = temp.view(temp.size(0), -1)
+            temp_1 = getattr(self, 'classifier4_' + str(i))(temp)
             temp_1 = temp_1.unsqueeze(-1)
-            pro = torch.cat([pro,temp_1],-1)        # B x num_classes x num_branches
+            # B x num_classes x num_branches
+            pro = torch.cat([pro, temp_1], -1)
         if self.ind:
             return pro, None
         # CL
@@ -236,57 +255,73 @@ class ResNet(nn.Module):
             if self.avg:
                 x_m = 0
                 for i in range(1, self.num_branches):
-                    x_m += 1/(self.num_branches-1) * pro[:,:,i]
+                    x_m += 1/(self.num_branches-1) * pro[:, :, i]
                 x_m = x_m.unsqueeze(-1)
                 for i in range(1, self.num_branches):
                     temp = 0
                     for j in range(0, self.num_branches):
                         if j != i:
-                            temp += 1/(self.num_branches-1) * pro[:,:,j]       # B x num_classes
+                            temp += 1/(self.num_branches-1) * \
+                                pro[:, :, j]       # B x num_classes
                     temp = temp.unsqueeze(-1)
-                    x_m = torch.cat([x_m, temp],-1)                            # B x num_classes x num_branches
+                    # B x num_classes x num_branches
+                    x_m = torch.cat([x_m, temp], -1)
             # ONE
             else:
                 x_c = self.avgpool_c(x)     # B x 32 x 1 x 1
-                x_c = x_c.view(x_c.size(0), -1) # B x 32 
-                x_c=self.control_v1(x_c)    # B x 3
-                x_c=self.bn_v1(x_c)  
-                x_c=F.relu(x_c)      
-                x_c = F.softmax(x_c, dim=1) # B x 3  
-                x_m = x_c[:,0].view(-1, 1).repeat(1, pro[:,:,0].size(1)) * pro[:,:,0]
+                x_c = x_c.view(x_c.size(0), -1)  # B x 32
+                x_c = self.control_v1(x_c)    # B x 3
+                x_c = self.bn_v1(x_c)
+                x_c = F.relu(x_c)
+                x_c = F.softmax(x_c, dim=1)  # B x 3
+                x_m = x_c[:, 0].view(-1, 1).repeat(1,
+                                                   pro[:, :, 0].size(1)) * pro[:, :, 0]
                 for i in range(1, self.num_branches):
-                    x_m += x_c[:,i].view(-1, 1).repeat(1, pro[:,:,i].size(1)) * pro[:,:,i]       # B x num_classes
+                    # B x num_classes
+                    x_m += x_c[:, i].view(-1, 1).repeat(1,
+                                                        pro[:, :, i].size(1)) * pro[:, :, i]
             return pro, x_m
 
-                
+
+def resnet18(pretrained: bool = False, progress: bool = True, **kwargs) -> ResNet:
+    r"""ResNet-18 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+
+
 def resnet32(pretrained=False, path=None, **kwargs):
     """
     Constructs a ResNet-32 model.
-    
+
     Args:
         pretrained (bool): If True, returns a model pre-trained.
     """
-    
+
     model = ResNet(BasicBlock, [5, 5, 5], **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model
 
+
 def resnet110(pretrained=False, path=None, **kwargs):
     """
     Constructs a ResNet-110 model.
-    
+
     Args:
         pretrained (bool): If True, returns a model pre-trained.
     """
-    
+
     model = ResNet(Bottleneck, [12, 12, 12], **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model
 
+
 def wide_resnet20_8(pretrained=False, path=None, **kwargs):
-    
     """Constructs a Wide ResNet-28-10 model.
     The model is the same as ResNet except for the bottleneck number of channels
     which is twice larger in every block. The number of channels in outer 1x1
@@ -295,8 +330,8 @@ def wide_resnet20_8(pretrained=False, path=None, **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained.
     """
-    
-    model = ResNet(Bottleneck, [2, 2, 2], width_per_group = 64 * 8, **kwargs)
+
+    model = ResNet(Bottleneck, [2, 2, 2], width_per_group=64 * 8, **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model

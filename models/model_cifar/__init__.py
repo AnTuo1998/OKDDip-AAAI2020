@@ -9,3 +9,5 @@ from .densenet_one import *
 from .densenet import *
 from .MultiNet import *
 from .DML import *
+from .mobilenetv2 import *
+from .shuffle import *

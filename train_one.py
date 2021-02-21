@@ -27,6 +27,19 @@ from torch.utils.tensorboard import SummaryWriter
 torch.backends.cudnn.benchmark = True
 # torch.backends.cudnn.deterministic = True
 
+
+def set_seed(seed):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
+    g = torch.Generator()
+    g.manual_seed(seed)
+
+
 # Set parameters
 parser = argparse.ArgumentParser()
 
@@ -81,10 +94,12 @@ parser.add_argument('--avg', action='store_true',
                     help='Decide whether or not to avg output as label: default(False)')
 parser.add_argument('--bpscale', action='store_true',
                     help='Decide whether or not to scale the gradients: default(False)')
+parser.add_argument('--seed', type=int, default=0, help='seed')
 
 args = parser.parse_args()
 state = {k: v for k, v in args._get_kwargs()}
 print(args)
+set_seed(args.seed)
 
 # Use CUDA
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id

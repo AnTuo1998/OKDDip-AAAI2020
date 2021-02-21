@@ -129,8 +129,12 @@ class ILR(torch.autograd.Function):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=10, num_branches=3, bpscale=False, avg=False, ind=False, zero_init_residual=False,
-                 groups=1, width_per_group=64, replace_stride_with_dilation=None, norm_layer=None):
+    def __init__(self, block, layers, num_classes=10, num_branches=3, bpscale=False, avg=False, ind=False,
+                 zero_init_residual=False,
+                 groups=1,
+                 width_per_group=64,
+                 replace_stride_with_dilation=None,
+                 norm_layer=None):
 
         super(ResNet, self).__init__()
         if norm_layer is None:
@@ -142,7 +146,7 @@ class ResNet(nn.Module):
         self.bpscale = bpscale
         self.num_branches = num_branches
 
-        self.inplanes = 16
+        self.inplanes = 64
         self.dilation = 1
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
@@ -154,8 +158,9 @@ class ResNet(nn.Module):
         self.groups = groups
         self.base_width = width_per_group
 
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(16)
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         # self.layer1 = self._make_layer(block, 16, layers[0])
         # self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
@@ -175,8 +180,7 @@ class ResNet(nn.Module):
                     nn.Linear(512 * block.expansion, num_classes))
 
         if self.avg == False:
-            # self.avgpool_c = nn.AvgPool2d(16)
-            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+            # one
             self.control_v1 = nn.Linear(fix_inplanes, self.num_branches)
             self.bn_v1 = nn.BatchNorm1d(self.num_branches)
 
@@ -268,7 +272,7 @@ class ResNet(nn.Module):
                     x_m = torch.cat([x_m, temp], -1)
             # ONE
             else:
-                x_c = self.avgpool_c(x)     # B x 32 x 1 x 1
+                x_c = F.adaptive_avg_pool2d(x, (1, 1))     # B x 32 x 1 x 1
                 x_c = x_c.view(x_c.size(0), -1)  # B x 32
                 x_c = self.control_v1(x_c)    # B x 3
                 x_c = self.bn_v1(x_c)

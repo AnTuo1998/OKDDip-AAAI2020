@@ -21,12 +21,18 @@ import models
 import models.model_cifar as model_cifar
 from torch.utils.tensorboard import SummaryWriter
 
-# Set the random seed for reproducible experiments
-# random.seed(97)
-# torch.manual_seed(97)
-# if torch.cuda.is_available(): torch.cuda.manual_seed(97)
-torch.backends.cudnn.benchmark = True
-# torch.backends.cudnn.deterministic = True
+
+def set_seed(seed):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
+    g = torch.Generator()
+    g.manual_seed(seed)
+
 
 # Set parameters
 parser = argparse.ArgumentParser()
@@ -78,10 +84,13 @@ parser.add_argument('--MulStu', action='store_true',
                     help='Decide whether or not to calculate multiStudent: default(False)')
 parser.add_argument('--type', default='GL', type=str,
                     help='Define the loss calculation strategy: default(GL)')
+parser.add_argument('--seed', type=int, default=0, help='seed')
+
 
 args = parser.parse_args()
 state = {k: v for k, v in args._get_kwargs()}
 print(args)
+set_seed(args.seed)
 
 # Use CUDA
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
@@ -335,8 +344,6 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
 
     for epoch in range(start_epoch, args.num_epochs):
 
-        scheduler.step()
-
         # Run one epoch
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
 
@@ -423,6 +430,8 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
 
             # Save model and optimizer
             shutil.copyfile(last_path, os.path.join(model_dir, 'best.pth'))
+
+        scheduler.step()
     writer.close()
 
 
@@ -461,15 +470,15 @@ if __name__ == '__main__':
     if args.dataset == 'CIFAR10':
         num_classes = 10
         model_folder = "model_cifar"
-        root = '/home/chendefang/MC/Data'
+        root = './Data'
     elif args.dataset == 'CIFAR100':
         num_classes = 100
         model_folder = "model_cifar"
-        root = '/home/chendefang/MC/Data'
+        root = './Data'
     elif args.dataset == 'imagenet':
         num_classes = 1000
         model_folder = "model_imagenet"
-        root = '/home/meijianping/Test/Data'
+        root = './Data'
 
     # Load data
     train_loader, test_loader = data_loader.dataloader(
@@ -497,6 +506,14 @@ if __name__ == '__main__':
                 num_classes=num_classes, num_branches=args.num_branches)
         elif "densenet" in args.model:
             model_cfg = getattr(model_fd, 'densenet_GL')
+            model = getattr(model_cfg, args.model)(
+                num_classes=num_classes, num_branches=args.num_branches)
+        elif "shuffle" in args.model:
+            model_cfg = getattr(model_fd, 'shuffle_GL')
+            model = getattr(model_cfg, args.model)(
+                num_classes=num_classes, num_branches=args.num_branches)
+        elif "mobile" in args.model:
+            model_cfg = getattr(model_fd, 'mobilenet_GL')
             model = getattr(model_cfg, args.model)(
                 num_classes=num_classes, num_branches=args.num_branches)
 

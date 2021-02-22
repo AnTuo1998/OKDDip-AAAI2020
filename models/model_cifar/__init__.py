@@ -11,5 +11,7 @@ from .MultiNet import *
 from .DML import *
 from .mobilenetv2 import *
 from .mobilenet_one import *
+from .mobilenet_GL import *
 from .shuffle import *
 from .shuffle_one import *
+from .shuffle_GL import *

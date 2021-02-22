@@ -274,6 +274,8 @@ def lookup(model_name):
         input_channel = 512
     elif model_name == "wide_resnet20_8" or model_name == "wide_resnet28_10":
         input_channel = 256
+    elif model_name == "resnet18":
+        input_channel = 512
     # imagenet
     elif model_name == "shufflenet_v2_x1_0":
         input_channel = 1024

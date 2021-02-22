@@ -233,7 +233,7 @@ class MobileNetV2(nn.Module):
         pro = x_3_1.unsqueeze(-1)
         for i in range(1, self.num_branches):
             temp = getattr(self, 'layer4_'+str(i))(x)
-            temp = self.avgpool(temp)       # B x 64 x 1 x 1
+            temp = F.adaptive_avg_pool2d(temp, (1, 1))       # B x 64 x 1 x 1
             temp = temp.view(temp.size(0), -1)
             temp_1 = getattr(self, 'classifier4_' + str(i))(temp)
             temp_1 = temp_1.unsqueeze(-1)
@@ -245,7 +245,7 @@ class MobileNetV2(nn.Module):
         else:
             if self.avg:
                 pass
-            #ONE
+            # ONE
             else:
                 x_c = F.adaptive_avg_pool2d(x, (1, 1))     # B x 32 x 1 x 1
                 x_c = x_c.view(x_c.size(0), -1)  # B x 32
@@ -260,8 +260,6 @@ class MobileNetV2(nn.Module):
                     x_m += x_c[:, i].view(-1, 1).repeat(1,
                                                         pro[:, :, i].size(1)) * pro[:, :, i]
             return pro, x_m
-
-
 
     def forward(self, x: Tensor, is_feat: bool = False) -> Tuple[Tensor]:
         return self._forward_impl(x, is_feat)

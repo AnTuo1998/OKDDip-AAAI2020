@@ -74,8 +74,8 @@ parser.add_argument('--num_workers', default=8, type=int,
 parser.add_argument('--gpu_id', default='0', type=str,
                     help='id(s) for CUDA_VISIBLE_DEVICES')
 
-parser.add_argument('--num_branches', default=4, type=int,
-                    help='Input the number of branches: default(4)')
+parser.add_argument('--num_branches', default=3, type=int,
+                    help='Input the number of branches: default(3)')
 parser.add_argument('--loss', default='KL', type=str,
                     help='Define the loss between student output and group output: default(KL_Loss)')
 parser.add_argument('--temperature', default=3.0, type=float,
@@ -482,12 +482,20 @@ if __name__ == '__main__':
             model_cfg = getattr(model_fd, 'resnet_one')
             model = getattr(model_cfg, args.model)(num_classes=num_classes,
                                                    num_branches=args.num_branches, ind=args.ind, avg=args.avg, bpscale=args.bpscale)
+        if "mobile" in args.model:
+            model_cfg = getattr(model_fd, 'mobilenet_one')
+            model = getattr(model_cfg, args.model)(num_classes=num_classes,
+                                                   num_branches=args.num_branches, ind=args.ind, avg=args.avg, bpscale=args.bpscale)
         elif "vgg" in args.model:
             model_cfg = getattr(model_fd, 'vgg_one')
             model = getattr(model_cfg, args.model)(num_classes=num_classes,
                                                    num_branches=args.num_branches, ind=args.ind, avg=args.avg, bpscale=args.bpscale)
         elif "densenet" in args.model:
             model_cfg = getattr(model_fd, 'densenet_one')
+            model = getattr(model_cfg, args.model)(num_classes=num_classes,
+                                                   num_branches=args.num_branches, ind=args.ind, avg=args.avg, bpscale=args.bpscale)
+        elif "shuffle" in args.model:
+            model_cfg = getattr(model_fd, 'shuffle_one')
             model = getattr(model_cfg, args.model)(num_classes=num_classes,
                                                    num_branches=args.num_branches, ind=args.ind, avg=args.avg, bpscale=args.bpscale)
 

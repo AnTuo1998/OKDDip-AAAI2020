@@ -106,7 +106,7 @@ class MobileNetV2(nn.Module):
         round_nearest: int = 8,
         block: Optional[Callable[..., nn.Module]] = None,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
-        num_branches=3, input_channel=1280,
+        num_branches=3, input_query_channel=1280,
         factor=8, en=False,
     ) -> None:
         """
@@ -189,9 +189,9 @@ class MobileNetV2(nn.Module):
                     )
 
         self.query_weight = nn.Linear(
-            input_channel, input_channel//factor, bias=False)
+            input_query_channel, input_query_channel//factor, bias=False)
         self.key_weight = nn.Linear(
-            input_channel, input_channel//factor, bias=False)
+            input_query_channel, input_query_channel//factor, bias=False)
 
         # weight initialization
         for m in self.modules():
@@ -204,7 +204,8 @@ class MobileNetV2(nn.Module):
                 nn.init.zeros_(m.bias)
             elif isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, 0, 0.01)
-                nn.init.zeros_(m.bias)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def _forward_impl(self, x: Tensor, is_feat: bool = False) -> Tensor:
         # This exists since TorchScript doesn't support inheritance, so the superclass method
@@ -234,7 +235,8 @@ class MobileNetV2(nn.Module):
         else:
             for i in range(1, self.num_branches - 1):
                 temp = getattr(self, 'layer4_'+str(i))(x)
-                temp = self.avgpool(temp)       # B x 64 x 1 x 1
+                temp = F.adaptive_avg_pool2d(
+                    temp, (1, 1))       # B x 64 x 1 x 1
                 temp = temp.view(temp.size(0), -1)
                 temp_q = self.query_weight(temp)
                 temp_k = self.key_weight(temp)
@@ -252,7 +254,7 @@ class MobileNetV2(nn.Module):
             x_m = torch.bmm(pro, attention.permute(0, 2, 1))
 
             temp = getattr(self, 'layer4_'+str(self.num_branches - 1))(x)
-            temp = self.avgpool(temp)       # B x 64 x 1 x 1
+            temp = F.adaptive_avg_pool2d(temp, (1, 1))       # B x 64 x 1 x 1
             temp = temp.view(temp.size(0), -1)
             temp_out = getattr(self, 'classifier4_' +
                                str(self.num_branches - 1))(temp)

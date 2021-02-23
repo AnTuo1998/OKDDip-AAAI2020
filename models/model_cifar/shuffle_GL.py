@@ -191,7 +191,7 @@ class ShuffleNetV2(nn.Module):
         else:
             for i in range(1, self.num_branches - 1):
                 temp = getattr(self, 'layer5_'+str(i))(x)
-                temp = self.avgpool(temp)       # B x 64 x 1 x 1
+                temp = temp.mean([2, 3])       # B x 64 x 1 x 1
                 temp = temp.view(temp.size(0), -1)
                 temp_q = self.query_weight(temp)
                 temp_k = self.key_weight(temp)
@@ -209,7 +209,7 @@ class ShuffleNetV2(nn.Module):
             x_m = torch.bmm(pro, attention.permute(0, 2, 1))
 
             temp = getattr(self, 'layer5_'+str(self.num_branches - 1))(x)
-            temp = self.avgpool(temp)       # B x 64 x 1 x 1
+            temp = temp.mean([2, 3])      # B x 64 x 1 x 1
             temp = temp.view(temp.size(0), -1)
             temp_out = getattr(self, 'classifier5_' +
                                str(self.num_branches - 1))(temp)
